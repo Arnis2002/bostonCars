@@ -1,88 +1,85 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocalStorage } from '../hooks/useLocalStorage';
+import { vehicles } from '../data/vehicles';
 
 export const COMPARE_LIMIT = 3;
 
 interface GarageValue {
   savedIds: string[];
-  compareIds: string[];
-  recentIds: string[];
   isSaved: (id: string) => boolean;
-  toggleSaved: (id: string) => boolean;
+  toggleSaved: (id: string) => void;
+  compareIds: string[];
   isComparing: (id: string) => boolean;
-  toggleCompare: (id: string) => 'added' | 'removed' | 'full';
+  toggleCompare: (id: string) => void;
   clearCompare: () => void;
-  addRecent: (id: string) => void;
+  compareOpen: boolean;
+  setCompareOpen: (open: boolean) => void;
+  notice: string;
 }
 
 const GarageContext = createContext<GarageValue | null>(null);
-
-function useStoredList(key: string): [string[], React.Dispatch<React.SetStateAction<string[]>>] {
-  const [list, setList] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(key) ?? '[]') as string[];
-    } catch {
-      return [];
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(list));
-    } catch {
-
-      // Storage unavailable.
-    }}, [key, list]);
-  return [list, setList];
-}
+const knownIds = new Set(vehicles.map((v) => v.id));
 
 export function GarageProvider({ children }: {children: React.ReactNode;}) {
-  const [savedIds, setSaved] = useStoredList('swas-saved');
-  const [compareIds, setCompare] = useStoredList('swas-compare');
-  const [recentIds, setRecent] = useStoredList('swas-recent');
+  const [rawSaved, setSaved] = useLocalStorage<string[]>('bfm-demo:saved', []);
+  const [rawCompare, setCompare] = useLocalStorage<string[]>('bfm-demo:compare', []);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [notice, setNotice] = useState('');
+  const timer = useRef<number>();
+
+  const savedIds = useMemo(() => rawSaved.filter((id) => knownIds.has(id)), [rawSaved]);
+  const compareIds = useMemo(() => rawCompare.filter((id) => knownIds.has(id)).slice(0, COMPARE_LIMIT), [rawCompare]);
+
+  const flash = useCallback((message: string) => {
+    setNotice(message);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setNotice(''), 3200);
+  }, []);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
 
   const toggleSaved = useCallback(
-    (id: string) => {
-      const willSave = !savedIds.includes(id);
-      setSaved((prev) => willSave ? [id, ...prev] : prev.filter((x) => x !== id));
-      return willSave;
-    },
-    [savedIds, setSaved]
+    (id: string) => setSaved((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]),
+    [setSaved]
   );
 
   const toggleCompare = useCallback(
-    (id: string): 'added' | 'removed' | 'full' => {
+    (id: string) => {
       if (compareIds.includes(id)) {
-        setCompare((prev) => prev.filter((x) => x !== id));
-        return 'removed';
+        setCompare(compareIds.filter((x) => x !== id));
+        return;
       }
-      if (compareIds.length >= COMPARE_LIMIT) return 'full';
-      setCompare((prev) => [...prev, id]);
-      return 'added';
+      if (compareIds.length >= COMPARE_LIMIT) {
+        flash(`You can compare up to ${COMPARE_LIMIT} cars. Remove one to add another.`);
+        return;
+      }
+      setCompare([...compareIds, id]);
     },
-    [compareIds, setCompare]
+    [compareIds, setCompare, flash]
   );
 
-  const addRecent = useCallback((id: string) => setRecent((prev) => [id, ...prev.filter((x) => x !== id)].slice(0, 8)), [setRecent]);
+  const clearCompare = useCallback(() => {
+    setCompare([]);
+    setCompareOpen(false);
+  }, [setCompare]);
 
-  const value = useMemo<GarageValue>(
-    () => ({
-      savedIds,
-      compareIds,
-      recentIds,
-      isSaved: (id) => savedIds.includes(id),
-      toggleSaved,
-      isComparing: (id) => compareIds.includes(id),
-      toggleCompare,
-      clearCompare: () => setCompare([]),
-      addRecent
-    }),
-    [savedIds, compareIds, recentIds, toggleSaved, toggleCompare, addRecent, setCompare]
-  );
+  const value: GarageValue = {
+    savedIds,
+    isSaved: (id) => savedIds.includes(id),
+    toggleSaved,
+    compareIds,
+    isComparing: (id) => compareIds.includes(id),
+    toggleCompare,
+    clearCompare,
+    compareOpen,
+    setCompareOpen,
+    notice
+  };
 
   return <GarageContext.Provider value={value}>{children}</GarageContext.Provider>;
 }
 
 export function useGarage(): GarageValue {
   const ctx = useContext(GarageContext);
-  if (!ctx) throw new Error('useGarage must be used within GarageProvider');
+  if (!ctx) throw new Error('useGarage must be used inside GarageProvider');
   return ctx;
 }

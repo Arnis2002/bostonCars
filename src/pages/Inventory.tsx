@@ -1,167 +1,162 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
-import { SearchXIcon } from 'lucide-react';
-import { PageTransition } from '../components/layout/PageTransition';
-import { Breadcrumbs } from '../components/ui/Breadcrumbs';
-import { FilterSidebar } from '../components/inventory/FilterSidebar';
-import { MobileFilterSheet } from '../components/inventory/MobileFilterSheet';
-import { SortToolbar } from '../components/inventory/SortToolbar';
+import { useSearchParams } from 'react-router-dom';
+import { HeartIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from 'lucide-react';
+import { usePageMeta } from '../hooks/usePageMeta';
+import { vehicles } from '../data/vehicles';
+import { useGarage } from '../contexts/GarageContext';
+import { VehicleCard } from '../components/vehicles/VehicleCard';
+import { FilterPanel } from '../components/inventory/FilterPanel';
 import { ActiveFilterChips } from '../components/inventory/ActiveFilterChips';
-import { VehicleCard } from '../components/inventory/VehicleCard';
-import { LoadingSkeleton } from '../components/inventory/LoadingSkeleton';
-import { RecentlyViewed } from '../components/inventory/RecentlyViewed';
-import { EmptyState } from '../components/ui/EmptyState';
-import { ErrorState } from '../components/ui/ErrorState';
-import { useInventory } from '../hooks/useInventory';
-import { useInventoryFilters } from '../hooks/useInventoryFilters';
-import { useSeo } from '../hooks/useSeo';
-import { disclaimers } from '../data/legal';
-import { PAGE_SIZE, applyFilters, getFilterChips, sortVehicles } from '../utils/inventoryFilters';
-import { breadcrumbSchema } from '../utils/schema';
-import { EASE_OUT } from '../utils/motion';
-import { btn, cn, container } from '../utils/styles';
+import { InventoryEmptyState } from '../components/inventory/InventoryEmptyState';
+import { Dialog } from '../components/Dialog';
+import { inputClass } from '../components/forms/Field';
+import {
+  applyFilters,
+  clearFilters,
+  filtersToParams,
+  getChips,
+  parseFilters,
+  sortOptions,
+  sortVehicles,
+  type InventoryFilters,
+  type SortKey } from
+'../utils/inventoryFilters';
+import { container } from '../utils/styles';
 
-export function InventoryPage() {
-  const { vehicles, status, retry } = useInventory();
-  const { filters, sort, paramsKey, setFilters, setSort, clear } = useInventoryFilters();
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [visible, setVisible] = useState(PAGE_SIZE);
+export function Inventory() {
+  usePageMeta('Inventory', 'Search pre-owned luxury cars and SUVs by make, body style, price, year, and mileage.');
+  const [params, setParams] = useSearchParams();
+  const filters = useMemo(() => parseFilters(params), [params]);
+  const { savedIds } = useGarage();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [query, setQuery] = useState(filters.q);
 
-  const results = useMemo(() => sortVehicles(applyFilters(vehicles, filters), sort), [vehicles, filters, sort]);
-  const chips = useMemo(() => getFilterChips(filters), [filters]);
+  const results = useMemo(() => sortVehicles(applyFilters(vehicles, filters, savedIds), filters.sort), [filters, savedIds]);
+  const chips = getChips(filters);
+  const filterCount = chips.filter((c) => c.id !== 'q' && c.id !== 'saved').length;
 
-  useEffect(() => setVisible(PAGE_SIZE), [paramsKey]);
+  const update = (next: InventoryFilters) => setParams(filtersToParams(next), { replace: true });
+  const clearAll = () => {
+    setQuery('');
+    update(clearFilters(filters));
+  };
 
-  useSeo({
-    title: 'Used Car, Truck & SUV Inventory in Grove City, OH | Southwest Auto Sale',
-    description: 'Browse current pre-owned inventory at Southwest Auto Sale in Grove City, Ohio. Filter by make, price, mileage and body style, then check availability or start a financing request.',
-    path: '/inventory',
-    schema: [breadcrumbSchema([{ name: 'Home', path: '/' }, { name: 'Inventory', path: '/inventory' }])]
-  });
+  useEffect(() => setQuery(filters.q), [filters.q]);
+  useEffect(() => {
+    if (query === filters.q) return undefined;
+    const t = window.setTimeout(() => update({ ...filters, q: query }), 250);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
-  const loading = status === 'loading';
-  const shown = results.slice(0, visible);
+  const savedToggle =
+  <button
+    type="button"
+    aria-pressed={filters.savedOnly}
+    onClick={() => update({ ...filters, savedOnly: !filters.savedOnly })}
+    className={`inline-flex h-11 items-center gap-2 rounded border px-3.5 text-sm font-medium transition-colors duration-150 ${filters.savedOnly ? 'border-ink bg-ink text-ivory' : 'border-line-strong bg-paper hover:border-ink'}`}>
+    
+      <HeartIcon className={`h-4 w-4 ${filters.savedOnly ? 'fill-ivory' : ''}`} aria-hidden="true" />
+      Saved <span className="tnum">({savedIds.length})</span>
+    </button>;
+
 
   return (
-    <>
-    <PageTransition>
-      <div className="border-b border-line bg-paper">
-        <div className={cn(container, 'py-6 lg:py-8')}>
-          <Breadcrumbs items={[{ label: 'Home', to: '/' }, { label: 'Inventory' }]} />
-          <h1 className="mt-2 text-[1.75rem] font-bold leading-tight tracking-tight text-navy sm:text-4xl">Used cars, trucks & SUVs for sale in Grove City, OH</h1>
-          <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-muted sm:text-base">
-            Dependable pre-owned vehicles for drivers across Grove City, Columbus and Central Ohio. Save favorites, compare up to three and check availability in a few taps.
+    <div className={`${container} pb-28 pt-10`}>
+      <header className="flex flex-col gap-6 border-b border-line pb-6 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="font-serif text-[44px] leading-none tracking-[-0.015em] sm:text-[56px]">Inventory</h1>
+          <p className="mt-3 text-[15px] text-ink-soft tnum" aria-live="polite">
+            {filters.savedOnly ? 'Showing saved cars: ' : 'Showing '}
+            <strong className="font-semibold text-ink">{results.length}</strong> of {vehicles.length} sample listings
           </p>
         </div>
-      </div>
-
-      <div className={cn(container, 'flex gap-8 pb-16 lg:pt-6')}>
-        <FilterSidebar vehicles={vehicles} filters={filters} onChange={(f) => setFilters(f)} activeCount={chips.length} onClear={clear} />
-
-        <div className="min-w-0 flex-1">
-          <SortToolbar
-              count={results.length}
-              total={vehicles.length}
-              loading={loading}
-              sort={sort}
-              onSort={setSort}
-              onOpenFilters={() => setSheetOpen(true)}
-              activeCount={chips.length} />
-            
-          <ActiveFilterChips chips={chips} onRemove={(chip) => setFilters(chip.clear(filters))} onClear={clear} />
-
-          <div className="mt-5">
-            {status === 'error' && <ErrorState onRetry={retry} />}
-
-            {loading &&
-              <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                <LoadingSkeleton count={6} />
-              </div>
-              }
-
-            {status === 'success' && results.length === 0 &&
-              <EmptyState
-                icon={SearchXIcon}
-                title="No vehicles match those filters"
-                message="Try removing a filter or widening your price and mileage range. Or tell us what you’re looking for and our team can help search.">
-                
-                <button type="button" onClick={clear} className={btn.navy}>
-                  Clear all filters
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px] lg:w-[560px]">
+          <div>
+            <label htmlFor="inventory-search" className="mb-1.5 block text-sm font-medium">Search make or model</label>
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
+              <input
+                id="inventory-search"
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="e.g. X5, Taycan, Volvo"
+                className={`${inputClass} h-12 border-line-strong pl-9 pr-10`} />
+              
+              {query &&
+              <button type="button" onClick={() => setQuery('')} className="absolute right-1 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center text-ink-soft hover:text-ink" aria-label="Clear search">
+                  <XIcon className="h-4 w-4" aria-hidden="true" />
                 </button>
-                <Link to="/contact?reason=Vehicle%20Finder" className={btn.outline}>
-                  Use our vehicle finder
-                </Link>
-              </EmptyState>
               }
-
-            {status === 'success' && results.length > 0 &&
-              <>
-                <motion.ul layout className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    {shown.map((v, i) =>
-                    <motion.li
-                      key={v.id}
-                      layout
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.98 }}
-                      transition={{ duration: 0.25, ease: EASE_OUT }}>
-                      
-                        <VehicleCard vehicle={v} priority={i < 3} />
-                      </motion.li>
-                    )}
-                  </AnimatePresence>
-                </motion.ul>
-
-                <div className="mt-8 flex flex-col items-center gap-2">
-                  <p className="text-sm text-muted tabular">
-                    Showing {shown.length} of {results.length}
-                  </p>
-                  {shown.length < results.length &&
-                  <button type="button" onClick={() => setVisible((v) => v + PAGE_SIZE)} className={btn.outline}>
-                      Show more vehicles
-                    </button>
-                  }
-                </div>
-              </>
-              }
+            </div>
           </div>
-
-          <p className="mt-10 text-xs leading-relaxed text-muted">{disclaimers.price}</p>
-
-          <RecentlyViewed vehicles={vehicles} />
-
-          <section aria-labelledby="local-title" className="mt-14 border-t border-line pt-10">
-            <h2 id="local-title" className="text-xl font-bold text-navy">
-              Shopping for a used vehicle near Columbus?
-            </h2>
-            <p className="mt-3 max-w-3xl text-[15px] leading-relaxed text-muted">
-              Southwest Auto Sale has served Grove City and Central Ohio since 2014 from our lot at 2140 Harrisburg Pike. We help drivers from Columbus, Hilliard, Upper Arlington, Lincoln Village, Bexley and nearby communities find practical used cars, pickup trucks and SUVs — with{' '}
-              <Link to="/financing" className="font-medium text-navy underline underline-offset-2">
-                financing options
-              </Link>{' '}
-              for a range of credit situations and{' '}
-              <Link to="/sell-trade" className="font-medium text-navy underline underline-offset-2">
-                trade-in appraisals
-              </Link>
-              .
-            </p>
-          </section>
+          <div>
+            <label htmlFor="inventory-sort" className="mb-1.5 block text-sm font-medium">Sort by</label>
+            <select id="inventory-sort" value={filters.sort} onChange={(e) => update({ ...filters, sort: e.target.value as SortKey })} className={`${inputClass} h-12 border-line-strong pr-8`}>
+              {sortOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
         </div>
-      </div>
-    </PageTransition>
+      </header>
 
-      <MobileFilterSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        vehicles={vehicles}
-        filters={filters}
-        onChange={(f) => setFilters(f)}
-        resultCount={results.length}
-        activeCount={chips.length}
-        onClear={clear} />
-      
-    </>);
+      <div className="mt-5 flex gap-2 lg:hidden">
+        <button type="button" onClick={() => setDrawerOpen(true)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded border border-ink bg-ink px-4 text-sm font-medium text-ivory sm:flex-none" aria-haspopup="dialog">
+          <SlidersHorizontalIcon className="h-4 w-4" aria-hidden="true" />
+          Filters{filterCount > 0 && <span className="tnum"> ({filterCount})</span>}
+        </button>
+        {savedToggle}
+      </div>
+
+      <div className="mt-6 lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-10">
+        <aside className="hidden lg:block" aria-label="Filters">
+          <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pb-6 pr-2">
+            <div className="flex items-center justify-between pb-4">
+              <h2 className="text-[15px] font-semibold">Filters</h2>
+              {chips.length > 0 &&
+              <button type="button" onClick={clearAll} className="text-sm font-medium text-forest underline underline-offset-4">Clear all</button>
+              }
+            </div>
+            <div className="pb-5">{savedToggle}</div>
+            <FilterPanel all={vehicles} filters={filters} savedIds={savedIds} onChange={update} idPrefix="side" />
+          </div>
+        </aside>
+
+        <section aria-label="Results">
+          <ActiveFilterChips chips={chips} onChange={update} onClear={clearAll} />
+          <div className={chips.length ? 'mt-6' : ''}>
+            {results.length === 0 ?
+            <InventoryEmptyState chips={chips} savedOnly={filters.savedOnly} onChange={update} onClear={clearAll} /> :
+
+            <ul className="grid gap-x-6 gap-y-12 sm:grid-cols-2 xl:grid-cols-3">
+                {results.map((v, i) =>
+              <li key={v.id}>
+                    <VehicleCard vehicle={v} priority={i < 3} sizes="(min-width: 1280px) 26vw, (min-width: 1024px) 36vw, (min-width: 640px) 45vw, 100vw" />
+                  </li>
+              )}
+              </ul>
+            }
+          </div>
+        </section>
+      </div>
+
+      <Dialog open={drawerOpen} onClose={() => setDrawerOpen(false)} labelledBy="filters-title" variant="drawer-left" panelClassName="flex h-full w-[88vw] max-w-sm flex-col bg-ivory">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-line px-5">
+          <h2 id="filters-title" className="font-serif text-2xl">Filters</h2>
+          <button type="button" onClick={() => setDrawerOpen(false)} className="inline-flex h-11 w-11 items-center justify-center rounded" aria-label="Close filters">
+            <XIcon className="h-6 w-6" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5">
+          <FilterPanel all={vehicles} filters={filters} savedIds={savedIds} onChange={update} idPrefix="drawer" />
+        </div>
+        <div className="pb-safe grid shrink-0 grid-cols-[auto_1fr] gap-3 border-t border-line bg-paper px-5 pt-3">
+          <button type="button" onClick={clearAll} className="h-12 px-3 text-sm font-medium text-forest underline underline-offset-4">Clear all</button>
+          <button type="button" onClick={() => setDrawerOpen(false)} className="inline-flex h-12 items-center justify-center rounded bg-forest text-[15px] font-medium text-ivory tnum">
+            Show {results.length} {results.length === 1 ? 'car' : 'cars'}
+          </button>
+        </div>
+      </Dialog>
+    </div>);
 
 }

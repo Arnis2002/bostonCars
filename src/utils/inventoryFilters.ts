@@ -1,192 +1,164 @@
-import type { FilterChip, InventoryFilters, QuickTag, SortKey } from '../types/inventory';
 import type { Vehicle } from '../types/vehicle';
 import { formatCurrency, formatNumber } from './format';
 
-export const PAGE_SIZE = 9;
+export type SortKey = 'recommended' | 'price-asc' | 'price-desc' | 'miles-asc' | 'year-desc' | 'year-asc';
 
-export function emptyFilters(): InventoryFilters {
+export interface InventoryFilters {
+  q: string;
+  makes: string[];
+  bodies: string[];
+  fuels: string[];
+  minPrice: number | null;
+  maxPrice: number | null;
+  minYear: number | null;
+  maxYear: number | null;
+  maxMiles: number | null;
+  savedOnly: boolean;
+  sort: SortKey;
+}
+
+export const defaultFilters: InventoryFilters = {
+  q: '',
+  makes: [],
+  bodies: [],
+  fuels: [],
+  minPrice: null,
+  maxPrice: null,
+  minYear: null,
+  maxYear: null,
+  maxMiles: null,
+  savedOnly: false,
+  sort: 'recommended'
+};
+
+export const sortOptions: {value: SortKey;label: string;}[] = [
+{ value: 'recommended', label: 'Featured first' },
+{ value: 'price-asc', label: 'Price: low to high' },
+{ value: 'price-desc', label: 'Price: high to low' },
+{ value: 'miles-asc', label: 'Mileage: lowest first' },
+{ value: 'year-desc', label: 'Year: newest first' },
+{ value: 'year-asc', label: 'Year: oldest first' }];
+
+
+export const priceSteps = [20000, 25000, 30000, 35000, 40000, 50000, 60000, 80000];
+export const mileageSteps = [10000, 25000, 40000, 60000, 80000];
+
+function toNumber(raw: string | null): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function toList(raw: string | null): string[] {
+  return raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+}
+
+function isSort(value: string | null): value is SortKey {
+  return sortOptions.some((o) => o.value === value);
+}
+
+export function parseFilters(params: URLSearchParams): InventoryFilters {
+  const sort = params.get('sort');
   return {
-    keyword: '',
-    stockNumber: '',
-    makes: [],
-    model: '',
-    yearMin: null,
-    yearMax: null,
-    priceMin: null,
-    priceMax: null,
-    mileageMax: null,
-    bodyStyles: [],
-    transmissions: [],
-    drivetrains: [],
-    fuelTypes: [],
-    colors: [],
-    availability: 'all',
-    tags: []
+    q: params.get('q') ?? '',
+    makes: toList(params.get('make')),
+    bodies: toList(params.get('body')),
+    fuels: toList(params.get('fuel')),
+    minPrice: toNumber(params.get('minPrice')),
+    maxPrice: toNumber(params.get('maxPrice')),
+    minYear: toNumber(params.get('minYear')),
+    maxYear: toNumber(params.get('maxYear')),
+    maxMiles: toNumber(params.get('maxMiles')),
+    savedOnly: params.get('saved') === '1',
+    sort: isSort(sort) ? sort : 'recommended'
   };
 }
 
-export const QUICK_TAG_LABELS: Record<QuickTag, string> = {
-  'under-10k': 'Under $10,000',
-  'fuel-efficient': 'Fuel efficient',
-  'third-row': 'Third-row SUVs',
-  family: 'Family vehicles'
-};
-
-export function matchesTag(v: Vehicle, tag: QuickTag): boolean {
-  switch (tag) {
-    case 'under-10k':
-      return v.price !== null && v.price < 10000;
-    case 'fuel-efficient':
-      return (v.highwayMPG ?? 0) >= 32;
-    case 'third-row':
-      return v.bodyStyle === 'SUV' && v.seating >= 7;
-    case 'family':
-      return v.bodyStyle === 'Minivan' || v.bodyStyle === 'SUV';
-    default:
-      return true;
-  }
+export function filtersToParams(f: InventoryFilters): URLSearchParams {
+  const p = new URLSearchParams();
+  if (f.q.trim()) p.set('q', f.q.trim());
+  if (f.makes.length) p.set('make', f.makes.join(','));
+  if (f.bodies.length) p.set('body', f.bodies.join(','));
+  if (f.fuels.length) p.set('fuel', f.fuels.join(','));
+  if (f.minPrice) p.set('minPrice', String(f.minPrice));
+  if (f.maxPrice) p.set('maxPrice', String(f.maxPrice));
+  if (f.minYear) p.set('minYear', String(f.minYear));
+  if (f.maxYear) p.set('maxYear', String(f.maxYear));
+  if (f.maxMiles) p.set('maxMiles', String(f.maxMiles));
+  if (f.savedOnly) p.set('saved', '1');
+  if (f.sort !== 'recommended') p.set('sort', f.sort);
+  return p;
 }
 
-export function applyFilters(vehicles: Vehicle[], f: InventoryFilters): Vehicle[] {
-  const words = f.keyword.toLowerCase().split(/\s+/).filter(Boolean);
-  const stock = f.stockNumber.trim().toLowerCase();
+export function buildInventoryHref(partial: Partial<InventoryFilters>): string {
+  const qs = filtersToParams({ ...defaultFilters, ...partial }).toString();
+  return qs ? `/inventory?${qs}` : '/inventory';
+}
 
-  return vehicles.filter((v) => {
-    if (v.status === 'sold') return false;
-    if (words.length) {
-      const haystack = `${v.year} ${v.make} ${v.model} ${v.trim} ${v.bodyStyle} ${v.exteriorColor} ${v.features.join(' ')}`.toLowerCase();
-      if (!words.every((w) => haystack.includes(w))) return false;
+export function applyFilters(list: Vehicle[], f: InventoryFilters, savedIds: string[] = []): Vehicle[] {
+  const tokens = f.q.toLowerCase().split(/\s+/).filter(Boolean);
+  return list.filter((v) => {
+    if (tokens.length) {
+      const hay = `${v.year} ${v.make} ${v.model} ${v.trim ?? ''} ${v.bodyStyle} ${v.fuelType}`.toLowerCase();
+      if (!tokens.every((t) => hay.includes(t))) return false;
     }
-    if (stock && !v.stockNumber.toLowerCase().includes(stock) && !v.vin.toLowerCase().endsWith(stock)) return false;
     if (f.makes.length && !f.makes.includes(v.make)) return false;
-    if (f.model && v.model !== f.model) return false;
-    if (f.yearMin !== null && v.year < f.yearMin) return false;
-    if (f.yearMax !== null && v.year > f.yearMax) return false;
-    if (f.priceMin !== null && (v.price === null || v.price < f.priceMin)) return false;
-    if (f.priceMax !== null && (v.price === null || v.price > f.priceMax)) return false;
-    if (f.mileageMax !== null && v.mileage > f.mileageMax) return false;
-    if (f.bodyStyles.length && !f.bodyStyles.includes(v.bodyStyle)) return false;
-    if (f.transmissions.length && !f.transmissions.includes(v.transmission)) return false;
-    if (f.drivetrains.length && !f.drivetrains.includes(v.drivetrain)) return false;
-    if (f.fuelTypes.length && !f.fuelTypes.includes(v.fuelType)) return false;
-    if (f.colors.length && !f.colors.includes(v.exteriorColorFamily)) return false;
-    if (f.availability !== 'all' && v.status !== f.availability) return false;
-    if (f.tags.length && !f.tags.every((t) => matchesTag(v, t))) return false;
+    if (f.bodies.length && !f.bodies.includes(v.bodyStyle)) return false;
+    if (f.fuels.length && !f.fuels.includes(v.fuelType)) return false;
+    if (f.minPrice && (v.price == null || v.price < f.minPrice)) return false;
+    if (f.maxPrice && (v.price == null || v.price > f.maxPrice)) return false;
+    if (f.minYear && v.year < f.minYear) return false;
+    if (f.maxYear && v.year > f.maxYear) return false;
+    if (f.maxMiles && v.mileage > f.maxMiles) return false;
+    if (f.savedOnly && !savedIds.includes(v.id)) return false;
     return true;
   });
 }
 
-export function sortVehicles(vehicles: Vehicle[], sort: SortKey): Vehicle[] {
-  const list = [...vehicles];
-  const priceOf = (v: Vehicle, fallback: number) => v.price === null ? fallback : v.price;
+export function sortVehicles(list: Vehicle[], sort: SortKey): Vehicle[] {
+  const copy = [...list];
+  const price = (v: Vehicle) => v.price ?? Number.POSITIVE_INFINITY;
   switch (sort) {
     case 'price-asc':
-      return list.sort((a, b) => priceOf(a, Infinity) - priceOf(b, Infinity));
+      return copy.sort((a, b) => price(a) - price(b));
     case 'price-desc':
-      return list.sort((a, b) => priceOf(b, -Infinity) - priceOf(a, -Infinity));
-    case 'mileage-asc':
-      return list.sort((a, b) => a.mileage - b.mileage);
+      return copy.sort((a, b) => (b.price ?? -1) - (a.price ?? -1));
+    case 'miles-asc':
+      return copy.sort((a, b) => a.mileage - b.mileage);
     case 'year-desc':
-      return list.sort((a, b) => b.year - a.year || a.mileage - b.mileage);
+      return copy.sort((a, b) => b.year - a.year || a.mileage - b.mileage);
     case 'year-asc':
-      return list.sort((a, b) => a.year - b.year);
-    case 'newest':
+      return copy.sort((a, b) => a.year - b.year);
     default:
-      return list.sort((a, b) => b.dateAdded.localeCompare(a.dateAdded));
+      return copy.sort((a, b) => Number(b.featured) - Number(a.featured));
   }
 }
 
-const listParam = (p: URLSearchParams, key: string) => p.get(key)?.split(',').filter(Boolean) ?? [];
-const numParam = (p: URLSearchParams, key: string) => {
-  const raw = p.get(key);
-  if (!raw) return null;
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
-};
-
-export function paramsToFilters(p: URLSearchParams): InventoryFilters {
-  const availability = p.get('status');
-  return {
-    keyword: p.get('q') ?? '',
-    stockNumber: p.get('stock') ?? '',
-    makes: listParam(p, 'make'),
-    model: p.get('model') ?? '',
-    yearMin: numParam(p, 'yearMin'),
-    yearMax: numParam(p, 'yearMax'),
-    priceMin: numParam(p, 'priceMin'),
-    priceMax: numParam(p, 'priceMax'),
-    mileageMax: numParam(p, 'mileageMax'),
-    bodyStyles: listParam(p, 'body') as InventoryFilters['bodyStyles'],
-    transmissions: listParam(p, 'trans') as InventoryFilters['transmissions'],
-    drivetrains: listParam(p, 'drive') as InventoryFilters['drivetrains'],
-    fuelTypes: listParam(p, 'fuel') as InventoryFilters['fuelTypes'],
-    colors: listParam(p, 'color') as InventoryFilters['colors'],
-    availability: availability === 'available' || availability === 'pending' ? availability : 'all',
-    tags: listParam(p, 'tags') as QuickTag[]
-  };
+export interface FilterChip {
+  id: string;
+  label: string;
+  next: InventoryFilters;
 }
 
-export function filtersToParams(f: InventoryFilters, sort?: SortKey): URLSearchParams {
-  const p = new URLSearchParams();
-  const setList = (k: string, v: string[]) => v.length && p.set(k, v.join(','));
-  const setNum = (k: string, v: number | null) => v !== null && p.set(k, String(v));
-  if (f.keyword.trim()) p.set('q', f.keyword.trim());
-  if (f.stockNumber.trim()) p.set('stock', f.stockNumber.trim());
-  setList('make', f.makes);
-  if (f.model) p.set('model', f.model);
-  setNum('yearMin', f.yearMin);
-  setNum('yearMax', f.yearMax);
-  setNum('priceMin', f.priceMin);
-  setNum('priceMax', f.priceMax);
-  setNum('mileageMax', f.mileageMax);
-  setList('body', f.bodyStyles);
-  setList('trans', f.transmissions);
-  setList('drive', f.drivetrains);
-  setList('fuel', f.fuelTypes);
-  setList('color', f.colors);
-  if (f.availability !== 'all') p.set('status', f.availability);
-  setList('tags', f.tags);
-  if (sort && sort !== 'newest') p.set('sort', sort);
-  return p;
-}
-
-export function inventoryHref(partial: Partial<InventoryFilters> = {}): string {
-  const qs = filtersToParams({ ...emptyFilters(), ...partial }).toString();
-  return qs ? `/inventory?${qs}` : '/inventory';
-}
-
-export function getFilterChips(f: InventoryFilters): FilterChip[] {
+export function getChips(f: InventoryFilters): FilterChip[] {
   const chips: FilterChip[] = [];
-  if (f.keyword) chips.push({ id: 'q', label: `“${f.keyword}”`, clear: (x) => ({ ...x, keyword: '' }) });
-  if (f.stockNumber) chips.push({ id: 'stock', label: `Stock ${f.stockNumber}`, clear: (x) => ({ ...x, stockNumber: '' }) });
-  f.makes.forEach((m) => chips.push({ id: `make-${m}`, label: m, clear: (x) => ({ ...x, makes: x.makes.filter((i) => i !== m), model: '' }) }));
-  if (f.model) chips.push({ id: 'model', label: f.model, clear: (x) => ({ ...x, model: '' }) });
-  if (f.yearMin !== null || f.yearMax !== null) {
-    const label = f.yearMin !== null && f.yearMax !== null ? `${f.yearMin}–${f.yearMax}` : f.yearMin !== null ? `${f.yearMin} or newer` : `${f.yearMax} or older`;
-    chips.push({ id: 'year', label, clear: (x) => ({ ...x, yearMin: null, yearMax: null }) });
-  }
-  if (f.priceMin !== null || f.priceMax !== null) {
-    const label =
-    f.priceMin !== null && f.priceMax !== null ?
-    `${formatCurrency(f.priceMin)}–${formatCurrency(f.priceMax)}` :
-    f.priceMax !== null ?
-    `Under ${formatCurrency(f.priceMax)}` :
-    `${formatCurrency(f.priceMin as number)}+`;
-    chips.push({ id: 'price', label, clear: (x) => ({ ...x, priceMin: null, priceMax: null }) });
-  }
-  if (f.mileageMax !== null) chips.push({ id: 'miles', label: `Under ${formatNumber(f.mileageMax)} mi`, clear: (x) => ({ ...x, mileageMax: null }) });
-  f.bodyStyles.forEach((b) => chips.push({ id: `body-${b}`, label: b, clear: (x) => ({ ...x, bodyStyles: x.bodyStyles.filter((i) => i !== b) }) }));
-  f.transmissions.forEach((t) => chips.push({ id: `trans-${t}`, label: t, clear: (x) => ({ ...x, transmissions: x.transmissions.filter((i) => i !== t) }) }));
-  f.drivetrains.forEach((d) => chips.push({ id: `drive-${d}`, label: d, clear: (x) => ({ ...x, drivetrains: x.drivetrains.filter((i) => i !== d) }) }));
-  f.fuelTypes.forEach((u) => chips.push({ id: `fuel-${u}`, label: u, clear: (x) => ({ ...x, fuelTypes: x.fuelTypes.filter((i) => i !== u) }) }));
-  f.colors.forEach((c) => chips.push({ id: `color-${c}`, label: `${c} exterior`, clear: (x) => ({ ...x, colors: x.colors.filter((i) => i !== c) }) }));
-  if (f.availability !== 'all') chips.push({ id: 'status', label: f.availability === 'available' ? 'Available now' : 'Sale pending', clear: (x) => ({ ...x, availability: 'all' }) });
-  f.tags.forEach((t) => chips.push({ id: `tag-${t}`, label: QUICK_TAG_LABELS[t], clear: (x) => ({ ...x, tags: x.tags.filter((i) => i !== t) }) }));
+  if (f.q.trim()) chips.push({ id: 'q', label: `“${f.q.trim()}”`, next: { ...f, q: '' } });
+  f.makes.forEach((m) => chips.push({ id: `make-${m}`, label: m, next: { ...f, makes: f.makes.filter((x) => x !== m) } }));
+  f.bodies.forEach((b) => chips.push({ id: `body-${b}`, label: b, next: { ...f, bodies: f.bodies.filter((x) => x !== b) } }));
+  f.fuels.forEach((x) => chips.push({ id: `fuel-${x}`, label: x, next: { ...f, fuels: f.fuels.filter((y) => y !== x) } }));
+  if (f.minPrice) chips.push({ id: 'minPrice', label: `From ${formatCurrency(f.minPrice)}`, next: { ...f, minPrice: null } });
+  if (f.maxPrice) chips.push({ id: 'maxPrice', label: `Up to ${formatCurrency(f.maxPrice)}`, next: { ...f, maxPrice: null } });
+  if (f.minYear) chips.push({ id: 'minYear', label: `${f.minYear} or newer`, next: { ...f, minYear: null } });
+  if (f.maxYear) chips.push({ id: 'maxYear', label: `${f.maxYear} or older`, next: { ...f, maxYear: null } });
+  if (f.maxMiles) chips.push({ id: 'maxMiles', label: `Under ${formatNumber(f.maxMiles)} mi`, next: { ...f, maxMiles: null } });
+  if (f.savedOnly) chips.push({ id: 'saved', label: 'Saved only', next: { ...f, savedOnly: false } });
   return chips;
 }
 
-export function countBy<T extends string>(vehicles: Vehicle[], pick: (v: Vehicle) => T): Map<T, number> {
-  const map = new Map<T, number>();
-  vehicles.forEach((v) => map.set(pick(v), (map.get(pick(v)) ?? 0) + 1));
-  return map;
+export function clearFilters(f: InventoryFilters): InventoryFilters {
+  return { ...defaultFilters, sort: f.sort };
+}
+
+export function uniqueSorted<T extends string | number>(values: T[]): T[] {
+  return Array.from(new Set(values)).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
 }

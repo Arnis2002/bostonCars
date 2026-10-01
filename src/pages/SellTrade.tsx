@@ -1,82 +1,53 @@
 import React from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { PageTransition } from '../components/layout/PageTransition';
-import { Breadcrumbs } from '../components/ui/Breadcrumbs';
-import { TradeInForm } from '../components/trade/TradeInForm';
-import { useInventory } from '../hooks/useInventory';
-import { useSeo } from '../hooks/useSeo';
+import { PhoneIcon } from 'lucide-react';
+import { usePageMeta } from '../hooks/usePageMeta';
+import { AppraisalForm } from '../components/trade/AppraisalForm';
 import { dealership } from '../data/dealership';
-import { breadcrumbSchema } from '../utils/schema';
-import { vehicleFullTitle } from '../utils/format';
-import { cn, container } from '../utils/styles';
+import { container } from '../utils/styles';
 
 const steps = [
-{ title: 'Share your vehicle details', text: 'VIN or plate, mileage, condition and a few photos.' },
-{ title: 'We review your request', text: 'Our team looks over the details and follows up with questions.' },
-{ title: 'Bring it in for inspection', text: 'Visit our Grove City lot so we can inspect and verify the vehicle.' },
-{ title: 'Sell it or trade toward your next vehicle', text: 'Apply the value toward a vehicle from our inventory, or simply sell.' }];
+{ t: 'Send the basics', d: 'Year, make, model, mileage, and an honest read on condition. A VIN helps but isn’t required.' },
+{ t: 'The dealership reviews it', d: 'Someone from sales follows up, and may ask for photos or a few more details.' },
+{ t: 'See it in person', d: 'An offer is confirmed only after the car has been looked over at the dealership.' }];
 
 
-export function SellTradePage() {
-  const [params] = useSearchParams();
-  const { vehicles } = useInventory();
-  const target = vehicles.find((v) => v.slug === params.get('vehicle'));
-
-  useSeo({
-    title: 'Sell or Trade Your Car in Grove City, OH | Southwest Auto Sale',
-    description: 'Request a trade-in or sell-your-car appraisal from Southwest Auto Sale in Grove City, Ohio. Share your vehicle details and photos online — final value subject to in-person inspection.',
-    path: '/sell-trade',
-    schema: [breadcrumbSchema([{ name: 'Home', path: '/' }, { name: 'Sell or Trade', path: '/sell-trade' }])]
-  });
+export function SellTrade() {
+  usePageMeta('Sell or trade your car', 'Send your car’s details to Boston Foreign Motor for review. Sell outright or trade toward another car.');
 
   return (
-    <PageTransition>
-      <div className="border-b border-line bg-paper">
-        <div className={cn(container, 'py-6 lg:py-10')}>
-          <Breadcrumbs items={[{ label: 'Home', to: '/' }, { label: 'Sell or Trade' }]} />
-          <h1 className="mt-2 max-w-3xl text-[2rem] font-bold leading-tight tracking-tight text-navy sm:text-5xl">Sell or trade your vehicle</h1>
-          <p className="mt-3 max-w-2xl text-lg leading-relaxed text-muted">
-            Tell us about your current vehicle and the Southwest Auto Sale team will follow up about a preliminary appraisal.
-          </p>
-        </div>
-      </div>
-
-      <div className={cn(container, 'grid gap-10 py-10 lg:grid-cols-12 lg:gap-14 lg:py-16')}>
-        <div className="lg:col-span-8">
-          {target &&
-          <p className="mb-5 rounded-xl border border-line bg-white px-4 py-3 text-[15px] text-steel">
-              Trading toward the <span className="font-semibold text-navy">{vehicleFullTitle(target)}</span> (Stock {target.stockNumber})
+    <div className={`${container} py-12 lg:py-16`}>
+      <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
+        <div className="lg:col-span-5">
+          <div className="lg:sticky lg:top-28">
+            <h1 className="font-serif text-[44px] leading-[1.02] tracking-[-0.015em] sm:text-[60px]">Sell or trade your car</h1>
+            <p className="mt-5 max-w-md text-[17px] leading-relaxed text-ink-soft">
+              Tell us about your car and whether you’d like to sell it or trade it in. It takes a couple of minutes.
             </p>
-          }
-          <div className="rounded-2xl border border-line bg-white p-5 shadow-card sm:p-8">
-            <TradeInForm targetVehicle={target?.slug} />
+            <ol className="mt-10">
+              {steps.map((s, i) =>
+              <li key={s.t} className="grid grid-cols-[2.25rem_1fr] gap-3 border-t border-line py-5">
+                  <span className="font-serif text-2xl leading-none text-forest tnum">{i + 1}</span>
+                  <div>
+                    <p className="text-[16px] font-semibold">{s.t}</p>
+                    <p className="mt-1 text-[15px] leading-relaxed text-ink-soft">{s.d}</p>
+                  </div>
+                </li>
+              )}
+            </ol>
+            <div className="border-t border-line pt-5">
+              <p className="text-[15px] leading-relaxed">
+                <strong className="font-semibold">There’s no instant offer here.</strong> A fair number depends on the car itself, so the dealership needs to see it first.
+              </p>
+              <a href={dealership.phoneHref} className="mt-4 inline-flex items-center gap-2 text-[15px] font-medium hover:underline">
+                <PhoneIcon className="h-4 w-4 text-forest" aria-hidden="true" /> Prefer to talk? {dealership.phoneDisplay}
+              </a>
+            </div>
           </div>
         </div>
-        <aside className="lg:col-span-4">
-          <h2 className="text-lg font-bold text-navy">How it works</h2>
-          <ol className="mt-4 space-y-5">
-            {steps.map((s, i) =>
-            <li key={s.title} className="grid grid-cols-[32px_1fr] gap-3">
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-navy text-sm font-bold text-white tabular">{i + 1}</span>
-                <div>
-                  <h3 className="font-semibold text-ink">{s.title}</h3>
-                  <p className="mt-0.5 text-sm leading-relaxed text-muted">{s.text}</p>
-                </div>
-              </li>
-            )}
-          </ol>
-          <div className="mt-8 rounded-2xl bg-paper p-5 text-sm leading-relaxed text-steel">
-            <p className="font-semibold text-navy">Questions about your trade?</p>
-            <p className="mt-1">
-              Call{' '}
-              <a href={dealership.phone.href} className="font-semibold text-navy underline underline-offset-2">
-                {dealership.phone.display}
-              </a>{' '}
-              or visit us at {dealership.fullAddress}.
-            </p>
-          </div>
-        </aside>
+        <section className="rounded border border-line bg-paper p-5 sm:p-8 lg:col-span-7" aria-label="Appraisal request">
+          <AppraisalForm />
+        </section>
       </div>
-    </PageTransition>);
+    </div>);
 
 }

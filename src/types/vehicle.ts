@@ -1,46 +1,43 @@
-export type VehicleStatus = 'available' | 'pending' | 'sold';
-export type BodyStyle = 'Sedan' | 'Hatchback' | 'SUV' | 'Pickup Truck' | 'Minivan';
-export type Transmission = 'Automatic' | 'CVT' | 'Manual';
-export type Drivetrain = 'FWD' | 'RWD' | 'AWD' | '4WD';
-export type FuelType = 'Gasoline' | 'Flex Fuel' | 'Hybrid' | 'Diesel';
-export type ColorFamily = 'Black' | 'White' | 'Silver' | 'Gray' | 'Red' | 'Blue' | 'Green' | 'Brown';
+export type BodyStyle = 'SUV' | 'Sedan';
+export type FuelType = 'Gasoline' | 'Electric' | 'Plug-in hybrid';
+export type Drivetrain = 'AWD' | 'RWD' | 'FWD';
 
-export interface VehicleImage {
-  src: string;
+export interface Photo {
+  /** Wikimedia Commons file name (or, later, a feed image URL) */
+  file: string;
   alt: string;
+  width: number;
+  height: number;
+  author: string;
+  /** Only set when the license was verified on the file page */
+  license?: string;
 }
 
 export interface Vehicle {
   id: string;
-  slug: string;
-  status: VehicleStatus;
+  stockNumber: string;
+  vin: string | null;
   year: number;
   make: string;
   model: string;
-  trim: string;
-  /** null = no published price → render "Contact for Price", never $0 */
+  trim: string | null;
   price: number | null;
-  previousPrice: number | null;
   mileage: number;
-  vin: string;
-  stockNumber: string;
   bodyStyle: BodyStyle;
-  engine: string;
-  transmission: Transmission;
-  drivetrain: Drivetrain;
+  drivetrain: Drivetrain | null;
   fuelType: FuelType;
-  cityMPG: number | null;
-  highwayMPG: number | null;
-  exteriorColor: string;
-  exteriorColorFamily: ColorFamily;
-  interiorColor: string;
-  seating: number;
-  description: string;
-  features: string[];
-  images: VehicleImage[];
-  historyReportUrl: string | null;
-  dateAdded: string;
+  engine: string | null;
+  transmission: string | null;
+  exteriorColor: string | null;
+  interiorColor: string | null;
+  titleStatus: string | null;
+  /** Material disclosures from the source listing — always shown, never hidden */
+  disclosures: string[];
+  /** Only true when the dealership has verified BFM Certified eligibility */
+  bfmCertified: boolean;
   featured: boolean;
-  /** Internal flag — demo placeholder record, must be replaced by verified feed data before launch. */
-  isPlaceholder: boolean;
+  /** True for demo content that is not actual dealership stock */
+  isSample: boolean;
+  description: string;
+  photos: Photo[];
 }

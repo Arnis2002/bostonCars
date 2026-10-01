@@ -1,40 +1,31 @@
 import React from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { XIcon } from 'lucide-react';
-import { EASE_OUT } from '../../utils/motion';
-import type { FilterChip } from '../../types/inventory';
+import type { FilterChip, InventoryFilters } from '../../utils/inventoryFilters';
 
 interface ActiveFilterChipsProps {
   chips: FilterChip[];
-  onRemove: (chip: FilterChip) => void;
+  onChange: (next: InventoryFilters) => void;
   onClear: () => void;
 }
 
-export function ActiveFilterChips({ chips, onRemove, onClear }: ActiveFilterChipsProps) {
+export function ActiveFilterChips({ chips, onChange, onClear }: ActiveFilterChipsProps) {
   if (!chips.length) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2 pt-4" aria-label="Active filters">
-      <AnimatePresence initial={false} mode="popLayout">
-        {chips.map((chip) =>
-        <motion.button
-          key={chip.id}
-          layout
-          type="button"
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.96 }}
-          transition={{ duration: 0.18, ease: EASE_OUT }}
-          onClick={() => onRemove(chip)}
-          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-navy px-3 text-sm font-medium text-white transition-colors duration-150 hover:bg-navy-800"
-          aria-label={`Remove filter: ${chip.label}`}>
-          
-            {chip.label}
-            <XIcon className="h-3.5 w-3.5" aria-hidden />
-          </motion.button>
-        )}
-      </AnimatePresence>
-      <button type="button" onClick={onClear} className="min-h-[36px] px-2 text-sm font-semibold text-brand hover:text-brand-dark">
-        Clear filters
+    <div className="flex flex-wrap items-center gap-2" aria-label="Active filters">
+      {chips.map((chip) =>
+      <button
+        key={chip.id}
+        type="button"
+        onClick={() => onChange(chip.next)}
+        className="inline-flex h-9 items-center gap-1.5 rounded border border-line-strong bg-paper pl-3 pr-2 text-[13px] font-medium transition-colors duration-150 hover:border-ink"
+        aria-label={`Remove filter: ${chip.label}`}>
+        
+          {chip.label}
+          <XIcon className="h-3.5 w-3.5 text-ink-soft" aria-hidden="true" />
+        </button>
+      )}
+      <button type="button" onClick={onClear} className="h-9 px-2 text-[13px] font-medium text-forest underline underline-offset-4">
+        Clear all
       </button>
     </div>);
 
